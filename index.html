@@ -47,7 +47,7 @@
         /* Sekcja Statystyk */
         .stats-box {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(3, 1fr);
             gap: 10px;
             margin-bottom: 20px;
             text-align: center;
@@ -125,7 +125,7 @@
 <nav>
     <button id="nav-start" class="active" onclick="showTab('start')">Start</button>
     <button id="nav-history" onclick="showTab('history')">Historia</button>
-    <button id="nav-money" onclick="showTab('money')">Pieniądze</button>
+    <button id="nav-money" onclick="showTab('money')">Karnet</button>
 </nav>
 
 <div class="container">
@@ -139,6 +139,10 @@
             <div class="stat-card">
                 <h3>Łączny czas</h3>
                 <p id="total-time">0h 0m</p>
+            </div>
+            <div class="stat-card">
+                <h3>Koszt / godz.</h3>
+                <p id="cost-per-hour">0.00 zł/h</p>
             </div>
         </div>
 
@@ -171,7 +175,7 @@
 
     <!-- ZAKŁADKA PIENIĄDZE -->
     <section id="tab-money" class="hidden">
-        <h3>Karnety i Wydatki</h3>
+        <h3>Twoje Karnety</h3>
         <button class="add-btn" id="toggle-money-form" onclick="toggleMoneyForm()">+</button>
         
         <div id="money-form-container" class="hidden" style="background: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #ddd;">
@@ -265,6 +269,18 @@
 
         document.getElementById('total-visits').innerText = totalVisits;
         document.getElementById('total-time').innerText = `${hours}h ${mins}m`;
+
+        // Kalkulacja kosztu za godzinę na podstawie wszystkich karnetów
+        const totalPaid = memberships.reduce((acc, m) => acc + parseFloat(m.price || 0), 0);
+        const totalHours = totalMinutes / 60;
+        const costEl = document.getElementById('cost-per-hour');
+        
+        if (totalHours > 0) {
+            const hourlyRate = totalPaid / totalHours;
+            costEl.innerText = hourlyRate.toFixed(2) + " zł/h";
+        } else {
+            costEl.innerText = "0.00 zł/h";
+        }
     }
 
     document.getElementById('gym-form').addEventListener('submit', function(e) {
@@ -311,7 +327,16 @@
         const list = document.getElementById('history-list');
         list.innerHTML = workouts.length === 0 ? '<p>Brak zapisanych treningów.</p>' : '';
         
-        workouts.forEach((w, index) => {
+        // Mapowanie z zachowaniem oryginalnego indeksu i sortowanie od najnowszych
+        const sortedWorkouts = workouts
+            .map((w, index) => ({ w, index }))
+            .sort((a, b) => {
+                const dtA = a.w.date + " " + (a.w.startTime || "00:00");
+                const dtB = b.w.date + " " + (b.w.startTime || "00:00");
+                return dtB.localeCompare(dtA);
+            });
+
+        sortedWorkouts.forEach(({ w, index }) => {
             const duration = calculateMinutes(w.startTime, w.endTime);
             const durationText = w.endTime ? `${Math.floor(duration/60)}h ${duration%60}m` : 'w trakcie';
             const timeRange = `${w.startTime} - ${w.endTime || '...'}`;
@@ -366,6 +391,7 @@
         localStorage.setItem('gym_memberships', JSON.stringify(memberships));
         toggleMoneyForm();
         renderMemberships();
+        updateStats();
     });
 
     function renderMemberships() {
@@ -391,6 +417,7 @@
             memberships.splice(index, 1);
             localStorage.setItem('gym_memberships', JSON.stringify(memberships));
             renderMemberships();
+            updateStats();
         }
     }
 
