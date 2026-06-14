@@ -16,6 +16,7 @@
             color: white;
             padding: 1rem;
             text-align: center;
+            position: relative;
         }
         nav {
             display: flex;
@@ -42,7 +43,7 @@
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         
         /* Sekcja Statystyk */
         .stats-box {
@@ -103,6 +104,18 @@
         .edit-btn { background: #f39c12; color: white; }
         .delete-btn { background: #e74c3c; color: white; }
 
+        /* Przycisk synchronizacji */
+        .sync-btn {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
         /* Pieniądze - lista */
         .money-item {
             background: #f9f9f9;
@@ -114,11 +127,57 @@
             justify-content: space-between;
             align-items: center;
         }
+
+        /* Modal */
+        .modal {
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 400px;
+            max-height: 80vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .close {
+            position: absolute;
+            right: 15px;
+            top: 10px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .stat-card.clickable { cursor: pointer; transition: transform 0.2s; }
+        .stat-card.clickable:hover { transform: scale(1.05); background: #d5dbdb; }
+
+        textarea {
+            width: 100%;
+            height: 80px;
+            margin: 10px 0;
+            padding: 8px;
+            box-sizing: border-box;
+            font-family: monospace;
+            font-size: 0.8rem;
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 <body>
 
 <header>
+    <button class="sync-btn" onclick="openSyncModal()" title="Synchronizacja">⚙️</button>
     <h1>Gym Tracker PL</h1>
 </header>
 
@@ -140,7 +199,7 @@
                 <h3>Łączny czas</h3>
                 <p id="total-time">0h 0m</p>
             </div>
-            <div class="stat-card">
+            <div class="stat-card clickable" onclick="openCostModal()">
                 <h3>Koszt / godz.</h3>
                 <p id="cost-per-hour">0.00 zł/h</p>
             </div>
@@ -194,6 +253,29 @@
             <!-- Lista karnetów -->
         </div>
     </section>
+</div>
+
+<div id="cost-modal" class="modal hidden">
+    <div class="modal-content">
+        <span class="close" onclick="closeCostModal()">&times;</span>
+        <h3>Historia kosztów miesięcznych</h3>
+        <div id="monthly-stats-list"></div>
+    </div>
+</div>
+
+<div id="sync-modal" class="modal hidden">
+    <div class="modal-content">
+        <span class="close" onclick="closeSyncModal()">&times;</span>
+        <h3>Synchronizacja danych</h3>
+        <p><small>Skopiuj ten kod, aby przenieść dane na inne urządzenie:</small></p>
+        <textarea id="sync-code-output" readonly onclick="this.select()"></textarea>
+        <button onclick="copyToClipboard()" style="width: 100%; padding: 10px; background: #1abc9c; color: white; border: none; border-radius: 4px; cursor: pointer; margin-bottom: 15px; font-weight: bold;">📋 Kopiuj kod do schowka</button>
+        
+        <hr>
+        <p><small>Wklej kod z innego urządzenia, aby wczytać dane:</small></p>
+        <textarea id="sync-code-input" placeholder="Wklej kod tutaj..."></textarea>
+        <button onclick="importData()" style="width: 100%; padding: 10px; background: #2c3e50; color: white; border: none; border-radius: 4px; cursor: pointer;">Importuj i zastąp dane</button>
+    </div>
 </div>
 
 <script>
@@ -418,6 +500,118 @@
             localStorage.setItem('gym_memberships', JSON.stringify(memberships));
             renderMemberships();
             updateStats();
+        }
+    }
+
+    window.openCostModal = function() {
+        document.getElementById('cost-modal').classList.remove('hidden');
+        renderMonthlyStats();
+    }
+
+    window.closeCostModal = function() {
+        document.getElementById('cost-modal').classList.add('hidden');
+    }
+
+    function renderMonthlyStats() {
+        const list = document.getElementById('monthly-stats-list');
+        list.innerHTML = '';
+
+        // 1. Grupowanie minut treningu według miesięcy
+        const monthlyHours = {};
+        workouts.forEach(w => {
+            const monthKey = w.date.substring(0, 7); // Format: "YYYY-MM"
+            const mins = calculateMinutes(w.startTime, w.endTime);
+            monthlyHours[monthKey] = (monthlyHours[monthKey] || 0) + (mins / 60);
+        });
+
+        // 2. Obliczanie dziennego kosztu dla każdego karnetu (proporcjonalnie)
+        const dailyCosts = {}; 
+        memberships.forEach(m => {
+            const start = new Date(m.from);
+            const end = new Date(m.to);
+            const price = parseFloat(m.price);
+            const diffTime = Math.abs(end - start);
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+            const costPerDay = price / diffDays;
+
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dateKey = d.toISOString().split('T')[0];
+                dailyCosts[dateKey] = (dailyCosts[dateKey] || 0) + costPerDay;
+            }
+        });
+
+        // 3. Agregacja kosztów według miesięcy
+        const monthlyCosts = {};
+        Object.keys(dailyCosts).forEach(dateKey => {
+            const monthKey = dateKey.substring(0, 7);
+            monthlyCosts[monthKey] = (monthlyCosts[monthKey] || 0) + dailyCosts[dateKey];
+        });
+
+        // 4. Łączenie danych i wyświetlanie od najnowszych
+        const allMonths = [...new Set([...Object.keys(monthlyHours), ...Object.keys(monthlyCosts)])].sort().reverse();
+
+        if (allMonths.length === 0) {
+            list.innerHTML = '<p style="text-align:center; padding:20px;">Brak danych do analizy.</p>';
+            return;
+        }
+
+        allMonths.forEach(month => {
+            const hours = monthlyHours[month] || 0;
+            const cost = monthlyCosts[month] || 0;
+            const rate = hours > 0 ? (cost / hours).toFixed(2) : "0.00";
+            
+            const div = document.createElement('div');
+            div.style.padding = "12px";
+            div.style.borderBottom = "1px solid #eee";
+            div.innerHTML = `
+                <strong>Miesiąc: ${month}</strong><br>
+                <small>Czas: ${Math.floor(hours)}h ${Math.round((hours % 1) * 60)}m</small><br>
+                <small>Koszt: ${cost.toFixed(2)} zł</small><br>
+                Wynik: <strong>${rate} zł/h</strong>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    // Funkcje synchronizacji
+    window.openSyncModal = function() {
+        const data = {
+            w: workouts,
+            m: memberships
+        };
+        // Kodowanie do Base64 (bezpieczne dla UTF-8)
+        const jsonStr = JSON.stringify(data);
+        const code = btoa(encodeURIComponent(jsonStr));
+        
+        document.getElementById('sync-code-output').value = code;
+        document.getElementById('sync-modal').classList.remove('hidden');
+    }
+
+    window.copyToClipboard = function() {
+        const copyText = document.getElementById("sync-code-output");
+        copyText.select();
+        navigator.clipboard.writeText(copyText.value);
+        alert("Kod został skopiowany do schowka!");
+    }
+
+    window.closeSyncModal = function() {
+        document.getElementById('sync-modal').classList.add('hidden');
+    }
+
+    window.importData = function() {
+        const code = document.getElementById('sync-code-input').value.trim();
+        if (!code) return;
+
+        try {
+            const decoded = JSON.parse(decodeURIComponent(atob(code)));
+            if (confirm('Czy na pewno chcesz zastąpić WSZYSTKIE dane tym kodem? Tej operacji nie da się cofnąć.')) {
+                localStorage.setItem('gym_workouts', JSON.stringify(decoded.w || []));
+                localStorage.setItem('gym_memberships', JSON.stringify(decoded.m || []));
+                alert('Dane zaimportowane pomyślnie! Strona zostanie odświeżona.');
+                location.reload();
+            }
+        } catch (e) {
+            alert('Błąd: Nieprawidłowy kod synchronizacji.');
         }
     }
 
