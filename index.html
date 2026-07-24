@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gym Tracker - Licznik Czasu</title>
+    <title>Siłownia - Licznik Czasu</title>
+    <!-- Łączymy z plikiem manifestu PWA -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2c3e50">
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -178,7 +181,7 @@
 
 <header>
     <button class="sync-btn" onclick="openSyncModal()" title="Synchronizacja">⚙️</button>
-    <h1>Gym Tracker PL</h1>
+    <h1>Siłownia</h1>
 </header>
 
 <nav>
@@ -308,7 +311,7 @@
         } else {
             container.classList.remove('show');
             btn.classList.remove('open');
-            setTimeout(resetForm, 500); // Resetuj po zamknięciu animacji
+            setTimeout(resetForm, 500);
         }
     }
 
@@ -352,7 +355,6 @@
         document.getElementById('total-visits').innerText = totalVisits;
         document.getElementById('total-time').innerText = `${hours}h ${mins}m`;
 
-        // Kalkulacja kosztu za godzinę na podstawie wszystkich karnetów
         const totalPaid = memberships.reduce((acc, m) => acc + parseFloat(m.price || 0), 0);
         const totalHours = totalMinutes / 60;
         const costEl = document.getElementById('cost-per-hour');
@@ -387,7 +389,6 @@
         renderHistory();
     });
 
-    // Inteligentne autouzupełnianie
     document.getElementById('place').addEventListener('input', function(e) {
         const val = e.target.value.toLowerCase();
         if (val === 'bra') e.target.value = 'Bratysławska';
@@ -409,7 +410,6 @@
         const list = document.getElementById('history-list');
         list.innerHTML = workouts.length === 0 ? '<p>Brak zapisanych treningów.</p>' : '';
         
-        // Mapowanie z zachowaniem oryginalnego indeksu i sortowanie od najnowszych
         const sortedWorkouts = workouts
             .map((w, index) => ({ w, index }))
             .sort((a, b) => {
@@ -461,7 +461,6 @@
         }
     }
 
-    // Obsługa pieniędzy
     document.getElementById('money-form').addEventListener('submit', function(e) {
         e.preventDefault();
         const membership = {
@@ -516,15 +515,13 @@
         const list = document.getElementById('monthly-stats-list');
         list.innerHTML = '';
 
-        // 1. Grupowanie minut treningu według miesięcy
         const monthlyHours = {};
         workouts.forEach(w => {
-            const monthKey = w.date.substring(0, 7); // Format: "YYYY-MM"
+            const monthKey = w.date.substring(0, 7);
             const mins = calculateMinutes(w.startTime, w.endTime);
             monthlyHours[monthKey] = (monthlyHours[monthKey] || 0) + (mins / 60);
         });
 
-        // 2. Obliczanie dziennego kosztu dla każdego karnetu (proporcjonalnie)
         const dailyCosts = {}; 
         memberships.forEach(m => {
             const start = new Date(m.from);
@@ -540,14 +537,12 @@
             }
         });
 
-        // 3. Agregacja kosztów według miesięcy
         const monthlyCosts = {};
         Object.keys(dailyCosts).forEach(dateKey => {
             const monthKey = dateKey.substring(0, 7);
             monthlyCosts[monthKey] = (monthlyCosts[monthKey] || 0) + dailyCosts[dateKey];
         });
 
-        // 4. Łączenie danych i wyświetlanie od najnowszych
         const allMonths = [...new Set([...Object.keys(monthlyHours), ...Object.keys(monthlyCosts)])].sort().reverse();
 
         if (allMonths.length === 0) {
@@ -573,13 +568,11 @@
         });
     }
 
-    // Funkcje synchronizacji
     window.openSyncModal = function() {
         const data = {
             w: workouts,
             m: memberships
         };
-        // Kodowanie do Base64 (bezpieczne dla UTF-8)
         const jsonStr = JSON.stringify(data);
         const code = btoa(encodeURIComponent(jsonStr));
         
@@ -615,7 +608,11 @@
         }
     }
 
-    // Inicjalizacja
+    // Automatyczna rejestracja Service Workera dla PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js').catch(err => console.error("SW Registration failed", err));
+    }
+
     updateStats();
     updateGymSuggestions();
 </script>
